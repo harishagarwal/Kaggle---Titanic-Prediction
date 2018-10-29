@@ -1,0 +1,292 @@
+setwd("/Users/harishagarwal/Desktop/Harish/Data Science Courses/Kaggle/Titanic")
+
+library(ggplot2)
+library(dplyr)
+library(dummies)
+
+#Loading the training and testing datasets
+
+df_train = read.csv("train.csv", header = T, na.strings = '')
+df_test = read.csv("test.csv", header = T,  na.strings = '')
+
+str(df_train)
+summary(df_train)
+head(df_train)
+
+summary(df_test)
+
+#Drop unnecessary columns which won't be required for analysis
+
+df_train = df_train[, !colnames(df_train) %in% c("PassengerId", "Name", "Ticket")]
+df_test = df_test[, !colnames(df_test) %in% c("Name", "Ticket")]
+
+summary(df_train)
+
+#Find out the % of missing values
+
+df_train_cabin_missing = sum(is.na(df_train$Cabin))/length(df_train$Cabin)
+print(df_train_cabin_missing)
+
+df_train_age_missing = sum(is.na(df_train$Age))/length(df_train$Age)
+print(df_train_age_missing)
+
+table(df_train$Embarked)
+
+#Converting Age and Fare variable from Numeric to Integer
+df_train$Age = as.integer(df_train$Age)
+df_test$Age = as.integer(df_test$Age)
+
+df_train$Fare = as.integer(df_train$Fare)
+df_test$Fare = as.integer(df_test$Fare)
+
+#Missing value treatment
+##Since Cabin is a categorical variable, we can replace NA's with the mode or entirely drop the column because it has a lot of missing values
+##Since Age is a continuous variable, we'll replace NA's with the mean
+##Replace the 2 missing values in Embarked with the mode 'S'
+
+# df_train$Cabin[is.na(df_train$Cabin)] = names(sort(-table(df_train$Cabin)))[1]
+# print(sum(is.na(df_train$Cabin))/length(df_train$Cabin))
+
+df_train$Cabin = NULL
+df_test$Cabin = NULL
+
+avg_age_train = mean(df_train$Age, na.rm = T)
+df_train$Age[is.na(df_train$Age)] = avg_age_train
+print(sum(is.na(df_train$Age))/length(df_train$Age))
+
+df_train$Embarked[is.na(df_train$Embarked)] = 'S'
+table(df_train$Embarked)
+
+##Replace the missing value in test data in Fare column with the Median value
+
+df_test$Fare[is.na(df_test$Fare)] = median(df_test$Fare)
+
+##Replace the missing value in test data in Age column with the mean age of train data
+
+df_test$Age[is.na(df_test$Age)] = avg_age_train
+
+#Bivariate analysis between the dependent variable (survived) and other independent variables
+
+##Embarked vs Survived
+
+df_train %>% ggplot(aes(x = Embarked)) + geom_bar()
+df_train %>% ggplot(aes(x = factor(Survived), fill = Embarked)) + geom_bar(position = "dodge")
+
+###Let's check the proportion of survived in each group
+df_train %>% group_by(Embarked) %>% summarise(mean = mean(Survived))
+
+###Since S has the least % of survived passengers, we can create dummy variables and drop S
+
+df_train = cbind(df_train, dummy(df_train$Embarked, sep = "_"))
+colnames(df_train)[(length(df_train)-2):length(df_train)] = c("Embarked_C", "Embarked_Q", "Embarked_S")
+df_train$Embarked = NULL
+df_train$Embarked_S = NULL
+
+df_test = cbind(df_test, dummy(df_test$Embarked, sep = "_"))
+colnames(df_test)[(length(df_test)-2):length(df_test)] = c("Embarked_C", "Embarked_Q", "Embarked_S")
+df_test$Embarked = NULL
+df_test$Embarked_S = NULL
+
+##Sex vs Survived
+
+df_train %>% ggplot(aes(x = Sex)) + geom_bar()
+
+###It can be seen that female passengers have the higher % of survival
+df_train %>% ggplot(aes(x = Sex, fill = factor(Survived))) + geom_bar(position = "dodge")
+
+table(df_train$Sex, df_train$Survived)
+
+##Pclass vs Survived
+
+df_train %>% ggplot(aes(x = Pclass)) + geom_bar()
+df_train %>% ggplot(aes(x = factor(Pclass), fill = factor(Survived))) + geom_bar(position = "dodge")
+
+###Let's check the proportion of survived in each group
+df_train %>% group_by(Pclass) %>% summarise(mean = mean(Survived))  # %>% ggplot(aes(x = factor(Pclass), y = mean)) + geom_point()
+
+###Since the 3rd Pclass has the minimum avg survival, we can drop it from the data
+df_train = cbind(df_train, dummy(df_train$Pclass, sep = "_"))
+colnames(df_train)[(length(df_train)-2):length(df_train)] = c("Pclass_1", "Pclass_2", "Pclass_3")
+df_train$Pclass_3 = NULL
+df_train$Pclass = NULL
+
+df_test = cbind(df_test, dummy(df_test$Pclass, sep = "_"))
+colnames(df_test)[(length(df_test)-2):length(df_test)] = c("Pclass_1", "Pclass_2", "Pclass_3")
+df_test$Pclass_3 = NULL
+df_test$Pclass = NULL
+
+##Age vs Survived
+
+df_train %>% ggplot(aes(x= Age)) + geom_histogram(bins = 80) +
+  scale_x_continuous(breaks = seq(min(df_train$Age), max(df_train$Age), 5))
+
+df_train %>% ggplot(aes(x = Age)) + geom_bar() + facet_wrap(~Survived) +
+  scale_x_continuous(breaks = seq(min(df_train$Age), max(df_train$Age), 5))
+
+###Let's check the proportion of survived by age
+df_train %>% group_by(Age) %>% summarise(mean_survival = mean(Survived)) %>% 
+  ggplot(aes(x = Age, y = mean_survival)) + geom_bar(stat = "Identity") + 
+  scale_x_continuous(breaks = seq(min(df_train$Age), max(df_train$Age), 5))
+
+###Let's create different age groups based on above analysis
+df_train$Age_group = ifelse(df_train$Age <= 15, "Child", ifelse(df_train$Age > 15 & df_train$Age <= 45, "Adult", "Senior Citizen"))
+df_train$Age = NULL
+
+df_test$Age_group = ifelse(df_test$Age <= 15, "Child", ifelse(df_test$Age > 15 & df_test$Age <= 45, "Adult", "Senior Citizen"))
+df_test$Age = NULL
+
+##Let's see if there is a relation between (Age Group - Sex) and Survived
+###From the plots, we can clearly assume that female adults survive more than the male adults.
+
+table(df_train$Sex, df_train$Age_group)
+df_train %>% ggplot(aes(x = Age_group)) + geom_bar() + facet_wrap(~Sex + Survived)
+
+###Creating dummy variables for Sex
+
+df_train = cbind(df_train, dummy(df_train$Sex, sep = "_"))
+colnames(df_train)[(length(df_train)-1):length(df_train)] = c("Female", "Male")
+df_train$Sex = NULL
+
+df_test = cbind(df_test, dummy(df_test$Sex, sep = "_"))
+colnames(df_test)[(length(df_test)-1):length(df_test)] = c("Female", "Male")
+df_test$Sex = NULL
+
+###Creating dummy variables for Age Groups
+
+df_train = cbind(df_train, dummy(df_train$Age_group, sep = "_"))
+colnames(df_train)[(length(df_train)-2):length(df_train)] = c("Adult", "Child", "Senior_Citizen")
+df_train$Age_group = NULL
+
+df_test = cbind(df_test, dummy(df_test$Age_group, sep = "_"))
+colnames(df_test)[(length(df_test)-2):length(df_test)] = c("Adult", "Child", "Senior_Citizen")
+df_test$Age_group = NULL
+
+##For SibSp and Parch, let's create a combined variable 'Family' if there are any siblings or parents together
+
+df_train$Family = ifelse((df_train$SibSp + df_train$Parch) > 0, 1, 0)
+df_test$Family = ifelse((df_test$SibSp + df_test$Parch) > 0, 1, 0)
+
+df_train$SibSp = df_train$Parch = NULL
+df_test$SibSp = df_test$Parch = NULL
+
+##Now let's see the relationship between Family and Survived
+
+df_train %>% ggplot(aes(x = factor(df_train$Family))) + geom_bar()
+df_train %>% ggplot(aes(x = factor(Survived), fill = factor(Family))) + geom_bar() + facet_wrap(~ Family)
+
+##Fare vs Survived
+
+###The average fare of Survived passengers is lot higher than that of non-survived passengers
+###Thus, we can say that the passengers who paid higher fare are more likely to survive
+
+df_train %>% group_by(Survived) %>% summarise(mean_fare = mean(Fare), median_fare = median(Fare))
+
+df_train %>% ggplot(aes(x = Fare)) + geom_freqpoly(bins = 100)
+
+df_train %>% ggplot(aes(x = factor(Survived), y = Fare)) + geom_boxplot() + 
+  scale_y_continuous(breaks = seq(min(df_train$Fare), max(df_train$Fare), 50))
+
+#Creating models based on the EDA performed
+
+#train_Y = as.data.frame(df_train[Survived])
+#train_X = as.data.frame(df_train[-c(df_train$Survived)])
+
+##Logistic Model
+glm_model = glm(Survived ~ ., data = df_train, family = "binomial")
+summary(glm_model)
+
+# Removing the insignificant variables from the model
+glm_model = glm(Survived ~ Embarked_C + Embarked_Q + Pclass_1 + Pclass_2 + Female + Adult + Child, data = df_train, family = "binomial")
+summary(glm_model)
+
+###Predict the training data using the model and find the accuracy
+predict_train_glm = predict(glm_model, type = "response")
+
+table(df_train$Survived, predict_train_glm > 0.5)
+accuracy_train_glm = (454+248)/(nrow(df_train))
+print(accuracy_train_glm)
+
+###Plot ROC curve to check for better threshold
+
+library(ROCR)
+ROCRpred = prediction(predict_train_glm, df_train$Survived)
+ROCRperf = performance(ROCRpred, "tpr","fpr")
+plot(ROCRperf)
+
+###Finding the AUC to find accuracy
+as.numeric(performance(ROCRpred, "auc")@y.values)
+
+###Finding the accuracy of the model on training and testing data using threshold 0.6
+table(df_train$Survived, predict_train_glm > 0.6)
+accuracy_train_glm = (511+210)/(nrow(df_train))
+print(accuracy_train_glm)
+
+##Rpart Trees
+library(rpart)
+library(rpart.plot)
+set.seed(3000)
+
+tree_model = rpart(Survived ~ ., data = df_train, method = "class", minbucket = 25)
+
+###Plot the CART tree
+prp(tree_model)
+
+###Predict using the model on the train data and find the accuracy 
+predict_train_cart = predict(tree_model, type = "class")
+table(df_train$Survived, predict_train_cart)
+
+accuracy_train_cart = (491+230)/nrow(df_train)
+print(accuracy_train_cart)
+
+##Random Forest
+library(randomForest)
+df_train$Survived = as.factor(df_train$Survived)
+set.seed(123)
+randomforest_model = randomForest(Survived ~ ., data = df_train, ntree = 200)
+
+###Predict using the model on the train data and find the accuracy 
+predict_train_rforest = predict(randomforest_model)
+table(df_train$Survived, predict_train_rforest)
+
+accuracy_train_rforest = (505+236)/nrow(df_train)
+print(accuracy_train_rforest)
+
+###But how to select an optimum value of minbucket to prevent over-fitting or under-fitting?
+###Let's use cross-validation to do this
+
+library(caret)
+library(e1071)
+
+numfolds = trainControl(method = 'cv', number = 10) #10-fold cross-validation
+cpgrid = expand.grid(.cp = seq(0.01,0.5,0.01))
+train(Survived ~ ., data = df_train, method = 'rpart', trControl = numfolds, tuneGrid = cpgrid)
+
+tree_model_CV = rpart(Survived ~ ., data = df_train, method = "class", cp = 0.01)
+
+###Plot the CART tree
+prp(tree_model_CV)
+
+###Predict using the model on the train data and find the accuracy 
+predict_train_cart_CV = predict(tree_model_CV, type = "class")
+table(df_train$Survived, predict_train_cart_CV)
+
+accuracy_train_cart_CV = (491+230)/nrow(df_train)
+print(accuracy_train_cart_CV)
+
+##SVM
+
+svm_model = svm(Survived ~ ., data = df_train)
+
+###Predict the training data using the model and find the accuracy
+predict_train_svm = predict(svm_model)
+
+table(df_train$Survived, predict_train_svm)
+accuracy_train_svm = (527+213)/(nrow(df_train))
+print(accuracy_train_svm)
+
+##Since all the above models give an accuracy of about 80%, let's predict using the Logistic model since it's easy to interpret
+
+summary(glm_model)
+predict_test_glm = predict(glm_model, newdata = df_test, type = "response")
+df_test$Survived = as.numeric(predict_test_glm > 0.6)
+
