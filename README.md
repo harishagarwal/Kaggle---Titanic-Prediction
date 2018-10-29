@@ -1,2 +1,2 @@
 # Kaggle---Titanic-Prediction
-Predicting the passengers who survived in the Titanic sink
+Predicting the survival of passengers in the Titanic sink
